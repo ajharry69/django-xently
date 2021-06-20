@@ -17,7 +17,7 @@ from xently import get_next_version
 
 PROJECT_DIR = os.path.dirname(__file__)
 
-sys.path.append(os.path.join(PROJECT_DIR, 'src'))
+sys.path.append(os.path.join(PROJECT_DIR, "src"))
 
 
 def get_version(package):
@@ -67,17 +67,17 @@ if sys.argv[-1] == "publish":
     sys.exit()
 
 setup(
-    name='django-xently',
-    url='https://github.com/ajharry69/django-xently',
+    name="django-xently",
+    url="https://github.com/ajharry69/django-xently",
     version=version,
     author="Orinda Harrison",
     author_email="oharry0535@gmail.com",
     description="No description",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    license='BSD',
-    package_dir={'': 'src'},
-    packages=find_packages('src'),
+    license="BSD",
+    package_dir={"": "src"},
+    packages=find_packages("src"),
     include_package_data=True,
     python_requires=">=3.6",
     install_requires=[
@@ -95,5 +95,5 @@ setup(
         "Programming Language :: Python :: 3 :: Only",
         "Topic :: Software Development",
         "Topic :: Internet :: WWW/HTTP",
-    ]
+    ],
 )

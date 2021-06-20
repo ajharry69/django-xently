@@ -10,7 +10,7 @@ from django.conf import settings
 from django.core.exceptions import AppRegistryNotReady
 from django.utils.module_loading import import_string
 
-from xently.core.exceptions import (AppNotFoundError, ClassNotFoundError)
+from xently.core.exceptions import AppNotFoundError, ClassNotFoundError
 
 # To preserve backwards compatibility of loading classes which moved
 # from one Xently module to another, we look into the dictionary below
@@ -18,7 +18,7 @@ from xently.core.exceptions import (AppNotFoundError, ClassNotFoundError)
 MOVED_MODELS = {}
 
 
-def get_class(module_label, classname, module_prefix='xently.apps'):
+def get_class(module_label, classname, module_prefix="xently.apps"):
     """
     Dynamically import a single class from the given module.
 
@@ -38,10 +38,10 @@ def get_class(module_label, classname, module_prefix='xently.apps'):
 
 @lru_cache(maxsize=100)
 def get_class_loader():
-    return import_string(settings.OSCAR_DYNAMIC_CLASS_LOADER)
+    return import_string(settings.XENTLY_DYNAMIC_CLASS_LOADER)
 
 
-def get_classes(module_label, classnames, module_prefix='xently.apps'):
+def get_classes(module_label, classnames, module_prefix="xently.apps"):
     class_loader = get_class_loader()
     return class_loader(module_label, classnames, module_prefix)
 
@@ -62,7 +62,8 @@ def default_class_loader(module_label, classnames, module_prefix):
     Args:
         module_label (str): Module label comprising the app label and the
             module name, separated by a dot.  For example, 'catalogue.forms'.
-        classname (str): Name of the class to be imported.
+        classnames (str): Name of the class to be imported.
+        module_prefix (str)
 
     Returns:
         The requested class object or ``None`` if it can't be found
@@ -90,39 +91,38 @@ def default_class_loader(module_label, classnames, module_prefix):
             ``ImportError``, it is re-raised
     """
 
-    if '.' not in module_label:
+    if "." not in module_label:
         # Importing from top-level modules is not supported, e.g.
         # get_class('shipping', 'Scale'). That should be easy to fix,
         # but @maikhoepfel had a stab and could not get it working reliably.
         # Overridable classes in a __init__.py might not be a good idea anyway.
-        raise ValueError(
-            "Importing from top-level modules is not supported")
+        raise ValueError("Importing from top-level modules is not supported")
 
     # import from Xently package (should succeed in most cases)
     # e.g. 'xently.apps.dashboard.catalogue.forms'
-    xently_module_label = "%s.%s" % (module_prefix, module_label)
+    xently_module_label = f"{module_prefix}.{module_label}"
     xently_module = _import_module(xently_module_label, classnames)
 
     # returns e.g. 'xently.apps.dashboard.catalogue',
     # 'yourproject.apps.dashboard.catalogue' or 'dashboard.catalogue',
     # depending on what is set in INSTALLED_APPS
     app_name = _find_registered_app_name(module_label)
-    if app_name.startswith('%s.' % module_prefix):
+    if app_name.startswith(f"{module_prefix}."):
         # The entry is obviously an Xently one, we don't import again
         local_module = None
     else:
         # Attempt to import the classes from the local module
         # e.g. 'yourproject.dashboard.catalogue.forms'
-        local_module_label = '.'.join(app_name.split('.') + module_label.split('.')[1:])
+        local_module_label = ".".join(app_name.split(".") + module_label.split(".")[1:])
         local_module = _import_module(local_module_label, classnames)
 
     if xently_module is local_module is None:
         # This intentionally doesn't raise an ImportError, because ImportError
         # can get masked in complex circular import scenarios.
         raise ModuleNotFoundError(
-            "The module with label '%s' could not be imported. This either"
+            f"The module with label '{module_label}' could not be imported. This either"
             "means that it indeed does not exist, or you might have a problem"
-            " with a circular import." % module_label
+            " with a circular import."
         )
 
     # return imported classes, giving preference to ones from the local package
@@ -170,8 +170,7 @@ def _pluck_classes(modules, classnames):
                 break
         if not klass:
             packages = [m.__name__ for m in modules if m is not None]
-            raise ClassNotFoundError("No class '%s' found in %s" % (
-                classname, ", ".join(packages)))
+            raise ClassNotFoundError(f"No class '{classname}' found in {', '.join(packages)}")
         klasses.append(klass)
     return klasses
 
@@ -181,34 +180,16 @@ def _find_registered_app_name(module_label):
     Given a module label, finds the name of the matching Xently app from the
     Django app registry.
     """
-    from xently.core.application import XentlyConfig
+    from xently.config import XentlyAppConfig
 
-    app_label = module_label.split('.')[0]
+    app_label = module_label.split(".")[0]
     try:
         app_config = apps.get_app_config(app_label)
     except LookupError:
-        raise AppNotFoundError(
-            "Couldn't find an app to import %s from" % module_label)
-    if not isinstance(app_config, XentlyConfig):
-        raise AppNotFoundError(
-            "Couldn't find an Xently app to import %s from" % module_label)
+        raise AppNotFoundError(f"Couldn't find an app to import {module_label} from")
+    if not isinstance(app_config, XentlyAppConfig):
+        raise AppNotFoundError(f"Couldn't find an Xently app to import {module_label} from")
     return app_config.name
-
-
-def get_profile_class():
-    """
-    Return the profile model class
-    """
-    # The AUTH_PROFILE_MODULE setting was deprecated in Django 1.5, but it
-    # makes sense for Xently to continue to use it. Projects built on Django
-    # 1.4 are likely to have used a profile class and it's very difficult to
-    # upgrade to a single user model. Hence, we should continue to support
-    # having a separate profile class even if Django doesn't.
-    setting = getattr(settings, 'AUTH_PROFILE_MODULE', None)
-    if setting is None:
-        return None
-    app_label, model_name = settings.AUTH_PROFILE_MODULE.split('.')
-    return get_model(app_label, model_name)
 
 
 def get_model(app_label, model_name):
@@ -227,9 +208,11 @@ def get_model(app_label, model_name):
             original_app_label = app_label
             app_label = xently_moved_model[0]
             warnings.warn(
-                'Model %s has recently moved from %s to the application %s, '
-                'please update your imports.' % (model_name, original_app_label, app_label),
-                RemovedInXently32Warning, stacklevel=2)
+                f"Model {model_name} has recently moved from {original_app_label} to the application {app_label}, "
+                f"please update your imports.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
     try:
         return apps.get_model(app_label, model_name)
     except AppRegistryNotReady:
@@ -243,7 +226,7 @@ def get_model(app_label, model_name):
             app_config = apps.get_app_config(app_label)
             # `app_config.import_models()` cannot be used here because it
             # would interfere with `apps.populate()`.
-            import_module('%s.%s' % (app_config.name, MODELS_MODULE_NAME))
+            import_module("%s.%s" % (app_config.name, MODELS_MODULE_NAME))
             # In order to account for case-insensitivity of model_name,
             # look up the model through a private API of the app registry.
             return apps.get_registered_model(app_label, model_name)
