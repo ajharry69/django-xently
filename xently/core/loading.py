@@ -38,7 +38,7 @@ def get_class(module_label, classname, module_prefix="xently.apps"):
 
 @lru_cache(maxsize=100)
 def get_class_loader():
-    return import_string(settings.XENTLY_DYNAMIC_CLASS_LOADER)
+    return import_string(getattr(settings, "XENTLY_DYNAMIC_CLASS_LOADER", "xently.core.loading.default_class_loader"))
 
 
 def get_classes(module_label, classnames, module_prefix="xently.apps"):
