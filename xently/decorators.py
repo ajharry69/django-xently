@@ -4,6 +4,8 @@ from django.contrib.auth.decorators import user_passes_test
 from django.core import exceptions
 from rest_framework import exceptions as api_exceptions
 
+__all__ = ["check_permissions", "permissions_required"]
+
 
 def check_permissions(user, permissions):
     """
@@ -50,9 +52,6 @@ def permissions_required(permissions, login_url, api_exception=True):
     login page. If the user is logged in, she gets a HTTP 403 Permission Denied
     message, analogous to Django's permission_required decorator.
     """
-
-    # if login_url is None:
-    #     login_url = reverse_lazy('customer:login')
 
     def _check_permissions(user):
         outcome = check_permissions(user, permissions)

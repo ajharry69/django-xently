@@ -13,8 +13,6 @@ import sys
 
 from setuptools import find_packages, setup
 
-from xently import get_next_version
-
 PROJECT_DIR = os.path.dirname(__file__)
 
 sys.path.append(os.path.join(PROJECT_DIR, "src"))
@@ -27,14 +25,6 @@ def get_version(package):
     with open(os.path.join(package, "__init__.py"), "rb") as init_py:
         src = init_py.read().decode("utf-8")
         return re.search("__version__ = ['\"]([^'\"]+)['\"]", src).group(1), src
-
-
-def update_version(package):
-    old_version, src = get_version(package)
-    new_version = get_next_version(old_version=old_version)
-    new_file_content = re.sub("__version__ = ['\"]([^'\"]+)['\"]", f'__version__ = "{new_version}"', src)
-    with open(os.path.join(package, "__init__.py"), "wb") as init_py:
-        init_py.write(bytes(new_file_content, encoding="utf-8"))
 
 
 version = get_version("xently")[0]
@@ -58,9 +48,8 @@ if sys.argv[-1] == "publish":
         # uploads production package
         os.system("twine upload dist/*")
     print("You probably want to also tag the version now:")
-    print(" git tag -a {0} -m 'version {0}'".format(version))
+    print(f" git tag -a {version} -m 'version {version}'")
     print(" git push --tags")
-    update_version("xently")
     shutil.rmtree("dist")
     shutil.rmtree("build")
     shutil.rmtree("django_xently.egg-info")
@@ -76,12 +65,10 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     license="BSD",
-    package_dir={"": "src"},
-    packages=find_packages("src"),
+    packages=find_packages(),
     include_package_data=True,
     python_requires=">=3.6",
     install_requires=[
-        "django",
         "djangorestframework",
     ],
     classifiers=[
