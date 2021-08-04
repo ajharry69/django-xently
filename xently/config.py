@@ -2,10 +2,11 @@ from django.apps import AppConfig
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.urls import URLPattern, include, re_path, path
-from rest_framework.routers import DefaultRouter
 
 from xently.decorators import permissions_required
 from xently.utils import get_installed_app_config
+
+__all__ = ["AutoLoadURLsConfigMixin", "AppConfigMixin", "XentlyAppConfig"]
 
 
 class AutoLoadURLsConfigMixin:
@@ -175,14 +176,3 @@ class AppConfigMixin:
 
 class XentlyAppConfig(AutoLoadURLsConfigMixin, AppConfigMixin, AppConfig):
     pass
-
-
-class XentlyApiAppConfig(XentlyAppConfig):
-    router = DefaultRouter()
-
-    def register_routers(self):
-        pass
-
-    def ready(self):
-        super().ready()
-        self.register_routers()

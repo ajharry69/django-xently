@@ -2,7 +2,6 @@ from collections.abc import Callable
 
 from django.contrib.auth.decorators import user_passes_test
 from django.core import exceptions
-from rest_framework import exceptions as api_exceptions
 
 __all__ = ["check_permissions", "permissions_required"]
 
@@ -57,8 +56,13 @@ def permissions_required(permissions, login_url, api_exception=True):
         outcome = check_permissions(user, permissions)
         if not outcome and user.is_authenticated:
             if api_exception:
-                raise exceptions.PermissionDenied
-            raise api_exceptions.PermissionDenied
+                try:
+                    from rest_framework import exceptions as api_exceptions
+                except ImportError:
+                    pass
+                else:
+                    raise api_exceptions.PermissionDenied
+            raise exceptions.PermissionDenied
         return outcome
 
     return user_passes_test(_check_permissions, login_url=login_url)

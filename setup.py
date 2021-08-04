@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-"""
-Installation script:
-
-To release a new version to PyPi:
-- Ensure the version is correctly set in xently.__init__.py
-- Run: make release
-"""
 import os
 import re
 import shutil
@@ -68,9 +61,7 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     python_requires=">=3.6",
-    install_requires=[
-        "djangorestframework",
-    ],
+    install_requires=["django>=2.2"],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Environment :: Web Environment",
