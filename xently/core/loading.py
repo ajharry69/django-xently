@@ -18,7 +18,73 @@ from xently.core.exceptions import AppNotFoundError, ClassNotFoundError
 MOVED_MODELS = {}
 
 
-def get_class(module_label, classname, module_prefix="xently.apps"):
+def _import_module(module_label, classnames):
+    """
+    Imports the module with the given name.
+    Returns None if the module doesn't exist, but propagates any import errors.
+    """
+    try:
+        return __import__(module_label, fromlist=classnames)
+    except ImportError:
+        # There are 2 reasons why there could be an ImportError:
+        #
+        #  1. Module does not exist. In that case, we ignore the import and
+        #     return None
+        #  2. Module exists but another ImportError occurred when trying to
+        #     import the module. In that case, it is important to propagate the
+        #     error.
+        #
+        # ImportError does not provide easy way to distinguish those two cases.
+        # Fortunately, the traceback of the ImportError starts at __import__
+        # statement. If the traceback has more than one frame, it means that
+        # application was found and ImportError originates within the local app
+        __, __, exc_traceback = sys.exc_info()
+        frames = traceback.extract_tb(exc_traceback)
+        if len(frames) > 1:
+            raise
+
+
+def _pluck_classes(modules, classnames):
+    """
+    Gets a list of class names and a list of modules to pick from.
+    For each class name, will return the class from the first module that has a
+    matching class.
+    """
+    klasses = []
+    for classname in classnames:
+        klass = None
+        for module in modules:
+            if hasattr(module, classname):
+                klass = getattr(module, classname)
+                break
+        if not klass:
+            packages = [m.__name__ for m in modules if m is not None]
+            raise ClassNotFoundError(f"No class '{classname}' found in {', '.join(packages)}")
+        klasses.append(klass)
+    return klasses
+
+
+def _find_registered_app_name(module_label):
+    """
+    Given a module label, finds the name of the matching Xently app from the
+    Django app registry.
+    """
+    app_label = module_label.split(".")[0]
+    try:
+        app_config = apps.get_app_config(app_label)
+    except LookupError:
+        raise AppNotFoundError(f"Couldn't find an app to import {module_label} from")
+    return app_config.name
+
+
+def get_classes(module_label, classnames, module_prefix=None):
+    if not module_prefix:
+        module_prefix = getattr(settings, "XENTLY_DYNAMIC_CLASS_LOADER_MODULE_PREFIX", "xently.apps")
+    class_loader = get_class_loader()
+    return class_loader(module_label, classnames, module_prefix)
+
+
+def get_class(module_label, classname, module_prefix=None):
     """
     Dynamically import a single class from the given module.
 
@@ -29,21 +95,12 @@ def get_class(module_label, classname, module_prefix="xently.apps"):
         module_label (str): Module label comprising the app label and the
             module name, separated by a dot.  For example, 'catalogue.forms'.
         classname (str): Name of the class to be imported.
+        module_prefix (str):
 
     Returns:
         The requested class object or `None` if it can't be found
     """
     return get_classes(module_label, [classname], module_prefix)[0]
-
-
-@lru_cache(maxsize=100)
-def get_class_loader():
-    return import_string(getattr(settings, "XENTLY_DYNAMIC_CLASS_LOADER", "xently.core.loading.default_class_loader"))
-
-
-def get_classes(module_label, classnames, module_prefix="xently.apps"):
-    class_loader = get_class_loader()
-    return class_loader(module_label, classnames, module_prefix)
 
 
 def default_class_loader(module_label, classnames, module_prefix):
@@ -129,67 +186,9 @@ def default_class_loader(module_label, classnames, module_prefix):
     return _pluck_classes([local_module, xently_module], classnames)
 
 
-def _import_module(module_label, classnames):
-    """
-    Imports the module with the given name.
-    Returns None if the module doesn't exist, but propagates any import errors.
-    """
-    try:
-        return __import__(module_label, fromlist=classnames)
-    except ImportError:
-        # There are 2 reasons why there could be an ImportError:
-        #
-        #  1. Module does not exist. In that case, we ignore the import and
-        #     return None
-        #  2. Module exists but another ImportError occurred when trying to
-        #     import the module. In that case, it is important to propagate the
-        #     error.
-        #
-        # ImportError does not provide easy way to distinguish those two cases.
-        # Fortunately, the traceback of the ImportError starts at __import__
-        # statement. If the traceback has more than one frame, it means that
-        # application was found and ImportError originates within the local app
-        __, __, exc_traceback = sys.exc_info()
-        frames = traceback.extract_tb(exc_traceback)
-        if len(frames) > 1:
-            raise
-
-
-def _pluck_classes(modules, classnames):
-    """
-    Gets a list of class names and a list of modules to pick from.
-    For each class name, will return the class from the first module that has a
-    matching class.
-    """
-    klasses = []
-    for classname in classnames:
-        klass = None
-        for module in modules:
-            if hasattr(module, classname):
-                klass = getattr(module, classname)
-                break
-        if not klass:
-            packages = [m.__name__ for m in modules if m is not None]
-            raise ClassNotFoundError(f"No class '{classname}' found in {', '.join(packages)}")
-        klasses.append(klass)
-    return klasses
-
-
-def _find_registered_app_name(module_label):
-    """
-    Given a module label, finds the name of the matching Xently app from the
-    Django app registry.
-    """
-    from xently.config import XentlyAppConfig
-
-    app_label = module_label.split(".")[0]
-    try:
-        app_config = apps.get_app_config(app_label)
-    except LookupError:
-        raise AppNotFoundError(f"Couldn't find an app to import {module_label} from")
-    if not isinstance(app_config, XentlyAppConfig):
-        raise AppNotFoundError(f"Couldn't find an Xently app to import {module_label} from")
-    return app_config.name
+@lru_cache(maxsize=100)
+def get_class_loader():
+    return import_string(getattr(settings, "XENTLY_DYNAMIC_CLASS_LOADER", "xently.core.loading.default_class_loader"))
 
 
 def get_model(app_label, model_name):
@@ -226,7 +225,7 @@ def get_model(app_label, model_name):
             app_config = apps.get_app_config(app_label)
             # `app_config.import_models()` cannot be used here because it
             # would interfere with `apps.populate()`.
-            import_module("%s.%s" % (app_config.name, MODELS_MODULE_NAME))
+            import_module(f"{app_config.name}.{MODELS_MODULE_NAME}")
             # In order to account for case-insensitivity of model_name,
             # look up the model through a private API of the app registry.
             return apps.get_registered_model(app_label, model_name)
